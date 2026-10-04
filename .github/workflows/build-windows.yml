@@ -9,39 +9,43 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
-    container:
-      image: registry.videolan.org/vlc-debian-win64-posix:20260611225331
 
     steps:
       - name: Checkout Zenfix overlay
         uses: actions/checkout@v4
 
-      - name: Clone pinned VLC source
-        run: |
-          git clone https://github.com/videolan/vlc.git vlc
-          cd vlc
-          git checkout da266629fdffc4bee4560d9c818efd16217efeda
-
-      - name: Apply Zenfix UI
-        run: python3 scripts/apply_zenfix.py vlc
-
-      - name: Build Windows x64 VLC
+      - name: Build Windows x64 VLC in official VideoLAN image
         env:
-          JOBS: 4
-          MESON_BUILD: -j 2
+          VLC_BUILD_IMAGE: registry.videolan.org/vlc-debian-win64-posix:20260611225331
         run: |
-          cd vlc
-          export VLC_CONTRIB_SHA="$(extras/ci/get-contrib-sha.sh win64)"
-          export VLC_PREBUILT_CONTRIBS_URL="https://artifacts.videolan.org/vlc/win64/vlc-contrib-x86_64-w64-mingw32-${VLC_CONTRIB_SHA}.tar.zst"
-          echo "Using prebuilt contribs: ${VLC_PREBUILT_CONTRIBS_URL}"
-          extras/ci/check-url.sh "${VLC_PREBUILT_CONTRIBS_URL}"
-          extras/package/win32/build.sh -a x86_64 -p
+          docker pull "$VLC_BUILD_IMAGE"
+          docker run --rm \
+            -u 0:0 \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            "$VLC_BUILD_IMAGE" \
+            bash -lc '
+              set -euxo pipefail
+              rm -rf vlc
+              git clone https://github.com/videolan/vlc.git vlc
+              cd vlc
+              git checkout da266629fdffc4bee4560d9c818efd16217efeda
+              cd /work
+              python3 scripts/apply_zenfix.py vlc
+              cd vlc
+              export JOBS=4
+              export MESON_BUILD="-j 2"
+              export VLC_CONTRIB_SHA="$(extras/ci/get-contrib-sha.sh win64)"
+              export VLC_PREBUILT_CONTRIBS_URL="https://artifacts.videolan.org/vlc/win64/vlc-contrib-x86_64-w64-mingw32-${VLC_CONTRIB_SHA}.tar.zst"
+              echo "Using prebuilt contribs: ${VLC_PREBUILT_CONTRIBS_URL}"
+              extras/ci/check-url.sh "${VLC_PREBUILT_CONTRIBS_URL}"
+              extras/package/win32/build.sh -a x86_64 -p
+              cd win64
+              make package-win-common
+            '
 
       - name: Package portable Windows folder
         run: |
-          cd vlc/win64
-          make package-win-common
-          cd "$GITHUB_WORKSPACE"
           python3 - <<'PY'
           import pathlib, shutil
           candidates=[]
