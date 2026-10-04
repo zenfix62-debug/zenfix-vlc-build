@@ -49,7 +49,9 @@ jobs:
               export VLC_PREBUILT_CONTRIBS_URL="https://artifacts.videolan.org/vlc/win64/vlc-contrib-x86_64-w64-mingw32-${VLC_CONTRIB_SHA}.tar.zst"
               echo "Using prebuilt contribs: ${VLC_PREBUILT_CONTRIBS_URL}"
               extras/ci/check-url.sh "${VLC_PREBUILT_CONTRIBS_URL}"
-              extras/package/win32/build.sh -a x86_64 -p
+
+              # -l enables VLC translations/locales in the Windows package.
+              extras/package/win32/build.sh -a x86_64 -p -l
               cd win64
               make package-win-common
             '
