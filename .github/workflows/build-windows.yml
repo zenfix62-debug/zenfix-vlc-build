@@ -30,6 +30,16 @@ jobs:
               git clone https://github.com/videolan/vlc.git vlc
               cd vlc
               git checkout da266629fdffc4bee4560d9c818efd16217efeda
+
+              # The pinned VLC revision asks the contrib system for Qt ShaderTools
+              # from a VideoLAN mirror / Qt URL that currently returns 404 from CI.
+              # Seed the exact upstream tarball from a Qt mirror so `make tools`
+              # can verify it against VLCs own SHA512SUMS and continue normally.
+              mkdir -p contrib/tarballs
+              curl -fL --retry 5 --retry-all-errors \
+                -o contrib/tarballs/qtshadertools-everywhere-src-6.8.3.tar.xz \
+                https://qt.mirror.constant.com/archive/qt/6.8/6.8.3/submodules/qtshadertools-everywhere-src-6.8.3.tar.xz
+
               cd /work
               python3 scripts/apply_zenfix.py vlc
               cd vlc
