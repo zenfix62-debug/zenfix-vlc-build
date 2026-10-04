@@ -5,10 +5,19 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+
+    env:
+      RELEASE_TAG: v0.1.0-beta.1
+      RELEASE_TITLE: Zenfix VLC v0.1 Beta 1
+      RELEASE_ZIP: ZenfixVLC-v0.1.0-beta.1-win64.zip
+      SOURCE_TGZ: ZenfixVLC-v0.1.0-beta.1-source.tar.gz
 
     steps:
       - name: Checkout Zenfix overlay
@@ -95,6 +104,25 @@ jobs:
           print('Packaged',src,'->',dst)
           PY
 
+      - name: Create distributable ZIP
+        run: |
+          rm -f "$RELEASE_ZIP"
+          cd dist
+          zip -r -9 "../$RELEASE_ZIP" ZenfixVLC-ProCompact-Glass-win64
+          cd ..
+          ls -lh "$RELEASE_ZIP"
+
+      - name: Create corresponding source archive
+        run: |
+          rm -f "$SOURCE_TGZ"
+          tar \
+            --exclude='vlc/.git' \
+            --exclude='vlc/win64' \
+            --exclude='vlc/contrib/tarballs' \
+            -czf "$SOURCE_TGZ" \
+            vlc overlay scripts README.md .github/workflows/build-windows.yml
+          ls -lh "$SOURCE_TGZ"
+
       - name: Upload Zenfix VLC artifact
         uses: actions/upload-artifact@v4
         with:
@@ -102,3 +130,37 @@ jobs:
           path: dist/ZenfixVLC-ProCompact-Glass-win64
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; leaving it unchanged."
+            exit 0
+          fi
+
+          cat > /tmp/release-notes.md <<'EOF'
+          First public beta of Zenfix VLC — Pro Compact + Glass for Windows x64.
+
+          Included in this build:
+          - Native VLC 4 Qt/QML based interface.
+          - Zenfix Pro Compact + Glass UI work.
+          - Russian localization fixes for new VLC 4 UI strings.
+          - Native Tools -> Trim Video function.
+          - Portable Windows x64 package; no installer required.
+
+          This is a beta build. Keep your normal VLC installation until Zenfix VLC is considered stable.
+
+          Based on VideoLAN VLC source commit da266629fdffc4bee4560d9c818efd16217efeda.
+          The corresponding patched source archive is attached to this release.
+          EOF
+
+          gh release create "$RELEASE_TAG" \
+            "$RELEASE_ZIP" \
+            "$SOURCE_TGZ" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$RELEASE_TITLE" \
+            --notes-file /tmp/release-notes.md \
+            --prerelease
