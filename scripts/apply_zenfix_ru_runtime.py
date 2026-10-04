@@ -85,7 +85,6 @@ new = r'''        assert(text);
             if (source == QStringLiteral("&Color Scheme") || source == QStringLiteral("Color Scheme")) return QString::fromUtf8("Цветовая схема");
 
             if (source == QStringLiteral("Open File")) return QString::fromUtf8("Открыть файл");
-            if (source == QStringLiteral("Add a service")) return QString::fromUtf8("Добавить сервис");
             if (source == QStringLiteral("Configure...")) return QString::fromUtf8("Настроить...");
         }
 
@@ -97,4 +96,17 @@ if old not in text:
 
 text = text.replace(old, new, 1)
 qt_cpp.write_text(text, encoding="utf-8")
+
+# Service discovery names arrive from plugin metadata as dynamic strings and
+# therefore bypass qsTr(). Route the known built-in names through qsTr() so
+# the Russian runtime fallback above can translate them too.
+services_qml = root / "modules/gui/qt/network/qml/ServicesSources.qml"
+services_text = services_qml.read_text(encoding="utf-8")
+services_old = '            title: is_dummy ? qsTr("Add a service") : model.long_name\n'
+services_new = '''            title: {\n                if (is_dummy) return qsTr("Add a service")\n                if (model.long_name === "Radio Browser") return qsTr("Radio Browser")\n                if (model.long_name === "Podcasts") return qsTr("Podcasts")\n                if (model.long_name === "Jamendo Selections") return qsTr("Jamendo Selections")\n                return model.long_name\n            }\n'''
+if services_old not in services_text:
+    raise RuntimeError("ServicesSources title anchor not found")
+services_text = services_text.replace(services_old, services_new, 1)
+services_qml.write_text(services_text, encoding="utf-8")
+
 print("Zenfix Russian runtime fallback applied")
