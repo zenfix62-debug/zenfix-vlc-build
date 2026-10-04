@@ -1,0 +1,78 @@
+name: Build Zenfix VLC Windows x64
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout Zenfix overlay
+        uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qqy \
+            git wget bzip2 file libwine-dev unzip libtool libtool-bin libltdl-dev pkg-config ant \
+            build-essential automake texinfo yasm p7zip-full autopoint gettext cmake zip wine nsis \
+            g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64 mingw-w64-tools curl gperf flex bison \
+            libcurl4-gnutls-dev python3 python3-setuptools python3-mako python3-requests python3-venv \
+            gcc make procps ca-certificates openjdk-11-jdk-headless nasm jq gnupg meson autoconf
+
+      - name: Clone pinned VLC source
+        run: |
+          git clone https://github.com/videolan/vlc.git vlc
+          cd vlc
+          git checkout da266629fdffc4bee4560d9c818efd16217efeda
+
+      - name: Apply Zenfix UI
+        run: python3 scripts/apply_zenfix.py vlc
+
+      - name: Build Windows x64 VLC
+        env:
+          JOBS: 4
+          MESON_BUILD: -j 2
+        run: |
+          mkdir build
+          cd build
+          export VLC_CONTRIB_SHA="$(cd ../vlc; extras/ci/get-contrib-sha.sh win32)"
+          export VLC_PREBUILT_CONTRIBS_URL="https://artifacts.videolan.org/vlc/win64/vlc-contrib-x86_64-w64-mingw32-${VLC_CONTRIB_SHA}.tar.bz2"
+          ../vlc/extras/package/win32/build.sh -a x86_64 -p
+
+      - name: Package portable Windows folder
+        run: |
+          cd build
+          if [ -d win64 ]; then
+            cd win64
+            make package-win-common
+          fi
+          cd "$GITHUB_WORKSPACE"
+          python3 - <<'PY'
+          import pathlib, shutil, sys
+          candidates=[]
+          for p in pathlib.Path('build').rglob('vlc-*-dev'):
+              if p.is_dir(): candidates.append(p)
+          for p in pathlib.Path('build').rglob('vlc-*'):
+              if p.is_dir() and (p/'vlc.exe').exists(): candidates.append(p)
+          if not candidates:
+              raise SystemExit('No packaged VLC folder found')
+          src=sorted(candidates, key=lambda p: len(str(p)))[0]
+          dst=pathlib.Path('dist/ZenfixVLC-ProCompact-Glass-win64')
+          if dst.exists(): shutil.rmtree(dst)
+          dst.parent.mkdir(parents=True, exist_ok=True)
+          shutil.copytree(src,dst)
+          print('Packaged',src,'->',dst)
+          PY
+
+      - name: Upload Zenfix VLC artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZenfixVLC-ProCompact-Glass-win64
+          path: dist/ZenfixVLC-ProCompact-Glass-win64
+          if-no-files-found: error
+          retention-days: 14
