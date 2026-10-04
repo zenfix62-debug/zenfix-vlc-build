@@ -28,7 +28,7 @@ jobs:
               set -euxo pipefail
 
               # Validate our patch scripts before touching VLC.
-              python3 -m py_compile scripts/apply_zenfix.py scripts/apply_zenfix_extras.py scripts/fix_zenfix_extras.py
+              python3 -m py_compile scripts/apply_zenfix.py scripts/apply_zenfix_extras.py scripts/fix_zenfix_extras.py scripts/apply_zenfix_ru_runtime.py
 
               rm -rf vlc
               git clone https://github.com/videolan/vlc.git vlc
@@ -48,14 +48,17 @@ jobs:
               python3 scripts/apply_zenfix.py vlc
               python3 scripts/apply_zenfix_extras.py vlc
               python3 scripts/fix_zenfix_extras.py vlc
+              python3 scripts/apply_zenfix_ru_runtime.py vlc
 
-              # Fail early if the Russian catalog is syntactically invalid or
-              # the native Tools -> Trim Video action was not actually patched in.
+              # Fail early if the Russian catalog is syntactically invalid,
+              # native trim was not patched, or the runtime fallback is missing.
               msgfmt --check --check-format -o /tmp/zenfix-ru.mo vlc/po/ru.po
               grep -Fq "Trim Video..." vlc/modules/gui/qt/menus/menus.cpp
               grep -Fq "void DialogsProvider::trimVideoDialog()" vlc/modules/gui/qt/dialogs/dialogs_provider.cpp
-              grep -Fq "msgstr \"Видео не найдено\"" vlc/po/ru.po
-              grep -Fq "msgstr \"Плейлисты\"" vlc/po/ru.po
+              grep -Fq "Zenfix fallbacks" vlc/modules/gui/qt/qt.cpp
+              grep -Fq "Обрезать видео..." vlc/modules/gui/qt/qt.cpp
+              grep -Fq "Плейлисты не найдены" vlc/modules/gui/qt/qt.cpp
+              grep -Fq "Закреплённая очередь воспроизведения" vlc/modules/gui/qt/qt.cpp
 
               cd vlc
               export JOBS=4
