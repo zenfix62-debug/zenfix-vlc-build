@@ -47,7 +47,7 @@ jobs:
 
           echo "$ARTIFACT_SHA256  $RELEASE_ZIP" | sha256sum -c -
           unzip -t "$RELEASE_ZIP" >/dev/null
-          unzip -l "$RELEASE_ZIP" | grep -Eq '(^|/)vlc\.exe$'
+          unzip -Z1 "$RELEASE_ZIP" | grep -Eq '(^|/)vlc\.exe$'
           ls -lh "$RELEASE_ZIP"
 
       - name: Create corresponding patched source archive
