@@ -108,8 +108,9 @@ jobs:
 
           This is a beta build. Keep your normal VLC installation until Zenfix VLC is considered stable.
 
-          The attached source archive is the patched VLC source corresponding to this binary.
+          Binary source snapshot: Zenfix commit ffabca76933b0c68ec811171375645aaf05fe3c2.
           Upstream VLC commit: da266629fdffc4bee4560d9c818efd16217efeda.
+          The attached source archive is the patched VLC source corresponding to this binary.
           EOF
 
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -123,10 +124,15 @@ jobs:
               --notes-file /tmp/release-notes.md \
               --prerelease
           else
+            # Target the current default-branch commit rather than PRODUCT_COMMIT.
+            # PRODUCT_COMMIT predates workflow changes; GitHub requires workflow-write
+            # permission to create a release targeting such a commit, and GITHUB_TOKEN
+            # cannot be granted that permission. The attached source archive remains
+            # pinned to PRODUCT_COMMIT and exactly matches the released binary.
             gh release create "$RELEASE_TAG" \
               "$RELEASE_ZIP" "$SOURCE_TGZ" SHA256SUMS.txt \
               --repo "$GITHUB_REPOSITORY" \
-              --target "$PRODUCT_COMMIT" \
+              --target "$GITHUB_SHA" \
               --title "$RELEASE_TITLE" \
               --notes-file /tmp/release-notes.md \
               --prerelease
