@@ -1,0 +1,133 @@
+name: Publish Zenfix VLC v0.1 Beta 1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/publish-beta-from-artifact.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    env:
+      RELEASE_TAG: v0.1.0-beta.1
+      RELEASE_TITLE: Zenfix VLC v0.1 Beta 1
+      RELEASE_ZIP: ZenfixVLC-v0.1.0-beta.1-win64.zip
+      SOURCE_TGZ: ZenfixVLC-v0.1.0-beta.1-source.tar.gz
+      PRODUCT_COMMIT: ffabca76933b0c68ec811171375645aaf05fe3c2
+      VLC_COMMIT: da266629fdffc4bee4560d9c818efd16217efeda
+      ARTIFACT_ID: '11307899481'
+      ARTIFACT_SHA256: 6918c8481901513c55bbee27e3ffd283e487bf676eda6f646b31702045b43183
+
+    steps:
+      - name: Checkout exact Zenfix source used by successful build 14
+        uses: actions/checkout@v5
+        with:
+          ref: ffabca76933b0c68ec811171375645aaf05fe3c2
+          fetch-depth: 1
+
+      - name: Download and verify successful Windows artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -fL --retry 5 --retry-all-errors \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            -o "$RELEASE_ZIP"
+
+          echo "$ARTIFACT_SHA256  $RELEASE_ZIP" | sha256sum -c -
+          unzip -t "$RELEASE_ZIP" >/dev/null
+          unzip -l "$RELEASE_ZIP" | grep -Eq '(^|/)vlc\.exe$'
+          ls -lh "$RELEASE_ZIP"
+
+      - name: Create corresponding patched source archive
+        run: |
+          set -euo pipefail
+          rm -rf vlc-source
+          mkdir vlc-source
+          git -C vlc-source init
+          git -C vlc-source remote add origin https://github.com/videolan/vlc.git
+          git -C vlc-source fetch --depth 1 origin "$VLC_COMMIT"
+          git -C vlc-source checkout --detach FETCH_HEAD
+
+          python3 scripts/apply_zenfix.py vlc-source
+          python3 scripts/apply_zenfix_extras.py vlc-source
+          python3 scripts/fix_zenfix_extras.py vlc-source
+          python3 scripts/apply_zenfix_ru_runtime.py vlc-source
+
+          grep -Fq "Trim Video..." vlc-source/modules/gui/qt/menus/menus.cpp
+          grep -Fq "Zenfix fallbacks" vlc-source/modules/gui/qt/qt.cpp
+
+          cat > vlc-source/ZENFIX_BUILD_INFO.txt <<EOF
+          Zenfix VLC v0.1 Beta 1
+          Zenfix product commit: $PRODUCT_COMMIT
+          Upstream VLC commit: $VLC_COMMIT
+          Windows binary artifact source: successful GitHub Actions build #14
+
+          This directory is the patched VLC source corresponding to the released binary.
+          EOF
+
+          rm -rf vlc-source/.git
+          tar -czf "$SOURCE_TGZ" \
+            --transform='s#^vlc-source#ZenfixVLC-v0.1.0-beta.1-source#' \
+            vlc-source
+          ls -lh "$SOURCE_TGZ"
+
+      - name: Create checksums
+        run: |
+          sha256sum "$RELEASE_ZIP" "$SOURCE_TGZ" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/release-notes.md <<'EOF'
+          First public beta of Zenfix VLC — Pro Compact + Glass for Windows x64.
+
+          Included in this build:
+          - Native VLC 4 Qt/QML based interface.
+          - Zenfix Pro Compact + Glass UI work.
+          - Russian localization fixes for the VLC 4 interface.
+          - Native Tools -> Trim Video function.
+          - Portable Windows x64 package; no installer required.
+
+          Download `ZenfixVLC-v0.1.0-beta.1-win64.zip`, extract it to a separate folder and run `vlc.exe`.
+
+          This is a beta build. Keep your normal VLC installation until Zenfix VLC is considered stable.
+
+          The attached source archive is the patched VLC source corresponding to this binary.
+          Upstream VLC commit: da266629fdffc4bee4560d9c818efd16217efeda.
+          EOF
+
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" \
+              "$RELEASE_ZIP" "$SOURCE_TGZ" SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$RELEASE_TITLE" \
+              --notes-file /tmp/release-notes.md \
+              --prerelease
+          else
+            gh release create "$RELEASE_TAG" \
+              "$RELEASE_ZIP" "$SOURCE_TGZ" SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$PRODUCT_COMMIT" \
+              --title "$RELEASE_TITLE" \
+              --notes-file /tmp/release-notes.md \
+              --prerelease
+          fi
